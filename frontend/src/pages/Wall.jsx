@@ -12,16 +12,22 @@ export default function Wall() {
       <header className="hero">
         <p className="eyebrow">位次展示</p>
         <h1>等候墙</h1>
-        <p className="lede">营业日 {wall.营业日}。按种类展示等候与过号位次。</p>
+        <p className="lede">
+          营业日 {wall.营业日}。按种类分栏，栏内一律按原位次（queue_pos）排序——
+          过号不沉底，重叫回窗后进在办栏，位次与过号前一致，可由同一规则重放。
+        </p>
       </header>
       {wall.在办?.length > 0 && (
         <section className="panel">
-          <h2>在办</h2>
+          <h2>在办（重叫/叫号占窗）</h2>
           <div className="card-grid">
             {wall.在办.map(t => (
               <div className="slip" key={t.id}>
                 <div className="no">{t.号牌}</div>
-                <div className="meta">{t.窗口} · {t.业务种类} · {t.状态}</div>
+                <div className="meta">
+                  <span className="tag">位次 {t.位次}</span>
+                  {t.窗口} · {t.业务种类} · {t.状态}
+                </div>
               </div>
             ))}
           </div>
@@ -35,7 +41,10 @@ export default function Wall() {
             {block.队列.map(t => (
               <div className="slip" key={t.id}>
                 <div className="no">{t.号牌}</div>
-                <div className="meta">{t.状态} · 位次 {t.位次}</div>
+                <div className="meta">
+                  <span className="tag">位次 {t.位次}</span>
+                  {t.状态 === '过号' ? '过号（原位次保留，重叫即回窗）' : t.状态}
+                </div>
               </div>
             ))}
           </div>

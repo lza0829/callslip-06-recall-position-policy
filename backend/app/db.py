@@ -1,7 +1,7 @@
 from __future__ import annotations
 import sqlite3
 from contextlib import contextmanager
-from app.config import DB_PATH
+from app.config import DB_PATH, DB_BUSY_TIMEOUT_MS
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS business_kinds (
@@ -58,16 +58,44 @@ CREATE TABLE IF NOT EXISTS day_seals (
 
 
 def connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    # autocommit：事务边界一律由 read_tx/write_tx 显式管理，
+    # 避免 sqlite3 模块隐式开启的 deferred 事务在写时才取锁。
+    conn = sqlite3.connect(
+        DB_PATH,
+        check_same_thread=False,
+        isolation_level=None,
+        timeout=DB_BUSY_TIMEOUT_MS / 1000,
+    )
     conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout={DB_BUSY_TIMEOUT_MS}")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
 
 @contextmanager
 def db():
+    """读路径：autocommit 下每条 SELECT 自成一读事务，无写锁。"""
     conn = connect()
     try:
+        yield conn
+    finally:
+        conn.close()
+
+
+@contextmanager
+def write_tx():
+    """写路径：BEGIN IMMEDIATE 立即取 RESERVED 锁，全局写事务串行化。
+
+    同一时刻仅一个写事务进入临界区，配合条件 UPDATE 的 rowcount 守卫，
+    保证重叫与新叫号抢窗、同号并发重叫不会双占窗；
+    临界区内任一步抛错即 ROLLBACK，号牌状态、窗口当前号指针、
+    位次物化、事件、总览桶同成败，不存在半刷。
+    """
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
         yield conn
         conn.commit()
     except Exception:
@@ -78,5 +106,8 @@ def db():
 
 
 def init_db() -> None:
-    with db() as conn:
+    conn = connect()
+    try:
         conn.executescript(SCHEMA)
+    finally:
+        conn.close()

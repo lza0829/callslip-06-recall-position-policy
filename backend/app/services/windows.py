@@ -1,6 +1,6 @@
 from __future__ import annotations
 from fastapi import HTTPException
-from app.services.core import parse_kind_ids, ticket_dict, ticket_row, window_row
+from app.services.core import conflict, parse_kind_ids, ticket_dict, ticket_row, window_row
 
 
 def list_windows(conn) -> list[dict]:
@@ -32,9 +32,18 @@ def list_windows(conn) -> list[dict]:
 
 def set_open(conn, window_id: int, open_: bool) -> dict:
     win = window_row(conn, window_id)
-    if not open_ and win["current_ticket_id"]:
-        raise HTTPException(400, detail="窗口仍有在办号，不可关闭")
-    conn.execute("UPDATE windows SET open=? WHERE id=?", (1 if open_ else 0, window_id))
+    if open_:
+        conn.execute("UPDATE windows SET open=1 WHERE id=?", (window_id,))
+    else:
+        if win["current_ticket_id"]:
+            raise HTTPException(400, detail="窗口仍有在办号，不可关闭")
+        # 守卫：仅当指针仍为空才允许关窗；并发叫号/重叫抢先占窗则 rowcount=0。
+        res = conn.execute(
+            "UPDATE windows SET open=0 WHERE id=? AND current_ticket_id IS NULL",
+            (window_id,),
+        )
+        if res.rowcount != 1:
+            raise conflict("窗口刚被叫号占用，关窗未生效，请刷新后重试")
     return next(w for w in list_windows(conn) if w["id"] == window_id)
 
 

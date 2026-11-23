@@ -6,6 +6,7 @@ export default function Skip() {
   const [wins, setWins] = useState([])
   const [wid, setWid] = useState('')
   const [err, setErr] = useState('')
+  const [msg, setMsg] = useState('')
   const load = async () => {
     try {
       const [t, w] = await Promise.all([api.tickets('过号'), api.windows()])
@@ -15,12 +16,18 @@ export default function Skip() {
     } catch (e) { setErr(e.message) }
   }
   useEffect(() => { load() }, [])
-  const onRecall = async (id) => {
-    setErr('')
-    try { await api.recall(id, Number(wid)); load() } catch (e) { setErr(e.message) }
+  const onRecall = async (t) => {
+    setErr(''); setMsg('')
+    try {
+      await api.recall(t.id, Number(wid))
+      // 全局口径「插回原位次」：重叫带着原位次直接占窗，回收列表即时出队，
+      // load() 刷新后该号不再出现；位次仍可在等候墙/事件流按原位次重放。
+      setMsg(`${t.号牌} 已按原位次 ${t.位次} 重叫入窗`)
+      await load()
+    } catch (e) { setErr(e.message) }
   }
   const onVoid = async (id) => {
-    setErr('')
+    setErr(''); setMsg('')
     try { await api.voidTicket(id); load() } catch (e) { setErr(e.message) }
   }
   return (
@@ -28,7 +35,7 @@ export default function Skip() {
       <header className="hero">
         <p className="eyebrow">回收命运</p>
         <h1>过号重叫</h1>
-        <p className="lede">过号可重叫回窗办理，或作废另取。</p>
+        <p className="lede">过号保留原位次，重叫即按原位次回窗办理；或作废另取。位次口径全局唯一，与等候墙同源。</p>
       </header>
       <section className="panel">
         <div className="form row">
@@ -39,14 +46,18 @@ export default function Skip() {
           </label>
         </div>
         {err && <p className="err">{err}</p>}
+        {msg && <p className="muted">{msg}</p>}
         <div className="card-grid" style={{ marginTop: 12 }}>
           {skipped.length === 0 && <p className="muted">暂无过号</p>}
           {skipped.map(t => (
             <div className="slip" key={t.id}>
               <div className="no">{t.号牌}</div>
-              <div className="meta">{t.业务种类} · {t.状态}</div>
+              <div className="meta">
+                <span className="tag">原位次 {t.位次}</span>
+                {t.业务种类} · {t.状态}
+              </div>
               <div className="actions">
-                <button type="button" onClick={() => onRecall(t.id)}>重叫</button>
+                <button type="button" onClick={() => onRecall(t)}>重叫</button>
                 <button type="button" className="danger" onClick={() => onVoid(t.id)}>作废</button>
               </div>
             </div>

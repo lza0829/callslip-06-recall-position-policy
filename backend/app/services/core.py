@@ -8,6 +8,11 @@ def now() -> str:
     return datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
 
+def conflict(detail: str) -> HTTPException:
+    """并发守卫失败：资源状态已被另一事务改写（409 语义，中文拒因）。"""
+    return HTTPException(409, detail=detail)
+
+
 def get_setting(conn, key: str, default: str = "") -> str:
     row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
     return row["value"] if row else default

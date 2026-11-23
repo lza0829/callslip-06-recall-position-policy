@@ -1,7 +1,7 @@
 from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from app.db import db
+from app.db import db, write_tx
 from app.services import windows as win_svc
 
 router = APIRouter(tags=["业务种类"])
@@ -22,7 +22,7 @@ def list_kinds():
 
 @router.post("/业务种类/{kind_id}/启停")
 def set_active(kind_id: int, body: ActiveBody):
-    with db() as conn:
+    with write_tx() as conn:
         win_svc.set_kind_active(conn, kind_id, body.启用)
         kinds = win_svc.list_kinds(conn)
         return next(k for k in kinds if k["id"] == kind_id)
